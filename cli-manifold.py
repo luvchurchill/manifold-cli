@@ -27,6 +27,10 @@ def _make_api_request(method, endpoint, data=None):
     response.raise_for_status()
     return response.json()
 
+def search_market(term, limit=10):
+    """Search for a market by term and return a list of matching markets."""
+    data = {"term": term, "limit": limit}
+    return _make_api_request("GET", "/search-markets", data=data)
 
 def get_market_by_slug(market_slug):
     """Get market information by its slug."""
@@ -43,10 +47,14 @@ def place_bet(contract_id, amount, outcome="YES", limit_prob=None, expires_at=No
     data = {
         "contractId": contract_id,
         "amount": amount,
-        "outcome": outcome,
-        "limitProb": limit_prob,
-        "expiresAt": expires_at,
+        "outcome": outcome
     }
+    if limit_prob is not None:
+        data["limitProb"] = limit_prob
+    if expires_at is not None:
+        data["expiresAt"] = expires_at
+
+    # print("Request Data:", json.dumps(data, indent=4)) 
     return _make_api_request("POST", "/bet", data=data)
 
 
@@ -73,6 +81,11 @@ def get_market_positions(market_id, order="profit", top=None, bottom=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manifold CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Search Market
+    parser_search_market = subparsers.add_parser("search-market", help="Search for a market")
+    parser_search_market.add_argument("term", type=str, help="Search term for the market")
+    parser_search_market.add_argument("--limit", type=int, default=10, help="Maximum number of markets to return")
 
     # Get market by slug
     parser_get_market = subparsers.add_parser("get-market", help="Get market by slug")
@@ -108,7 +121,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        if args.command == "get-market":
+        if args.command == "search-market":
+            markets = search_market(args.term, args.limit)
+            print(json.dumps(markets, indent=4))
+        elif args.command == "get-market":
             market = get_market_by_slug(args.slug)
             print(json.dumps(market, indent=4))
         elif args.command == "get-user":

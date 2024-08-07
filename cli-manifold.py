@@ -1,7 +1,8 @@
+import argparse
+import json
 import os
 import requests
-import json
-import argparse
+from typing import List, Dict, Any
 
 API_BASE_URL = "https://api.manifold.markets/v0"
 API_KEY = os.environ.get("MANIFOLD_API_KEY")
@@ -24,25 +25,37 @@ def _make_api_request(method, endpoint, data=None):
     else:
         raise ValueError(f"Unsupported HTTP method: {method}")
 
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        error_data = response.json()
+
+        if "message" in error_data:
+            print(f"API Error ({response.status_code}): {error_data['message']}")
+        else:
+            print(f"API Request Error: {e}")
+            print(f"Response Content: {response.content}")
+        
+        raise
+  
     return response.json()
 
-def search_market(term, limit=10):
+def search_market(term: str, limit: int = 10):
     """Search for a market by term and return a list of matching markets."""
     data = {"term": term, "limit": limit}
     return _make_api_request("GET", "/search-markets", data=data)
 
-def get_market_by_slug(market_slug):
+def get_market_by_slug(market_slug: str):
     """Get market information by its slug."""
     return _make_api_request("GET", f"/slug/{market_slug}")
 
 
-def get_user_by_username(username):
+def get_user_by_username(username: str):
     """Get user information by their username."""
     return _make_api_request("GET", f"/user/{username}")
 
 
-def place_bet(contract_id, amount, outcome="YES", limit_prob=None, expires_at=None):
+def place_bet(contract_id: str, amount: int, outcome: str, limit_prob=None, expires_at=None):
     """Place a bet or limit order on a market."""
     data = {
         "contractId": contract_id,
@@ -58,17 +71,17 @@ def place_bet(contract_id, amount, outcome="YES", limit_prob=None, expires_at=No
     return _make_api_request("POST", "/bet", data=data)
 
 
-def cancel_limit_order(bet_id):
+def cancel_limit_order(bet_id: str):
     """Cancel an existing limit order."""
     return _make_api_request("POST", f"/bet/cancel/{bet_id}")
 
 
-def get_my_bets(limit=1000):
+def get_my_bets(limit: int = 1000):
     """Retrieve a list of the authenticated user's bets."""
     return _make_api_request("GET", "/bets", data={"limit": limit})
 
 
-def get_market_positions(market_id, order="profit", top=None, bottom=None):
+def get_market_positions(market_id: str, order="profit", top=None, bottom=None):
     """Get positions information for a market."""
     data = {"order": order}
     if top:
@@ -76,7 +89,21 @@ def get_market_positions(market_id, order="profit", top=None, bottom=None):
     if bottom:
         data["bottom"] = bottom
     return _make_api_request("GET", f"/market/{market_id}/positions", data=data)
+def sell(outcome, market_id, answer_id=None, shares=None):  # Add shares=None
+    """Sell shares of a market. 
+    outcome is 'YES' or 'NO'.
+    answer_id is for multiple choice questions. 
+    shares is the number of shares to sell (optional, defaults to all)."""
 
+    data = {
+        "outcome": outcome,
+    }
+    if shares is not None:  # Only include shares if provided
+        data["shares"] = shares 
+    if answer_id is not None: # Only include answerId if provided and not None
+        data["answerId"] = answer_id
+
+    return _make_api_request("POST", f"/market/{market_id}/sell", data=data)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manifold CLI")
@@ -99,10 +126,16 @@ if __name__ == "__main__":
     parser_place_bet = subparsers.add_parser("bet", help="Place a bet")
     parser_place_bet.add_argument("contract_id", type=str, help="Contract ID")
     parser_place_bet.add_argument("amount", type=float, help="Bet amount")
-    parser_place_bet.add_argument("--outcome", type=str, default="YES", choices=["YES", "NO"], help="Bet outcome (YES/NO)")
+    parser_place_bet.add_argument("outcome", type=str, choices=["YES", "NO"], help="Bet outcome (YES/NO)")
     parser_place_bet.add_argument("--limit_prob", type=float, help="Limit probability (optional)")
     parser_place_bet.add_argument("--expires_at", type=int, help="Expiration timestamp (optional)")
 
+    # Sell position
+    parser_sell_position = subparsers.add_parser("sell", help="sell off a position")
+    parser_sell_position.add_argument("market_id", type=str, help="Market ID") # This should be the first positional arg
+    parser_sell_position.add_argument("outcome", type=str, help="Outcome (YES/NO)")  # Moved after market_id
+    parser_sell_position.add_argument("--shares", type=int, help="Number of shares to sell (optional, sells all by default)")
+    parser_sell_position.add_argument("--answer_id", type=str, help="Answer ID (for multiple choice markets)") 
     # Cancel limit order
     parser_cancel_order = subparsers.add_parser("cancel-order", help="Cancel a limit order")
     parser_cancel_order.add_argument("bet_id", type=str, help="Bet ID")
@@ -142,6 +175,9 @@ if __name__ == "__main__":
         elif args.command == "get-positions":
             positions = get_market_positions(args.market_id, args.order, args.top, args.bottom)
             print(json.dumps(positions, indent=4))
+        elif args.command == "sell":
+            sale_result = sell(args.outcome, args.market_id, args.answer_id, args.shares)  # Pass args.shares
+            print(json.dumps(sale_result, indent=4))  # Add this to print the result
         else:
             parser.print_help()
     except requests.exceptions.RequestException as e:

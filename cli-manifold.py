@@ -43,16 +43,69 @@ def _make_api_request(method, endpoint, data=None):
 def search_market(term: str, limit: int = 10):
     """Search for a market by term and return a list of matching markets."""
     data = {"term": term, "limit": limit}
-    return _make_api_request("GET", "/search-markets", data=data)
+    markets = _make_api_request("GET", "/search-markets", data=data)
+
+    if not markets:
+        print("No markets found.")
+        return
+
+    print("Found markets:")
+    for i, market in enumerate(markets):
+        print(f"{i + 1}. {market['question']} (Slug: {market['slug']})")
+
+    choice = int(input("Enter the number of the market you want to view: ")) - 1
+    selected_market_slug = markets[choice]['slug']
+
+    get_market_by_slug(selected_market_slug)
+
 
 def get_market_by_slug(market_slug: str):
     """Get market information by its slug."""
-    return _make_api_request("GET", f"/slug/{market_slug}")
+    market = _make_api_request("GET", f"/slug/{market_slug}")
+    question = market["question"]
+    total_liquidity = market["totalLiquidity"]
+    volume_24h = market["volume24Hours"]
+
+    print(f"Market: {question}")
+    print(f"Total Liquidity: {total_liquidity}")
+    print(f"24-Hour Volume: {volume_24h}")
+    print("\nCurrent Probabilities:")
+
+    if market["outcomeType"] == "MULTIPLE_CHOICE":
+        print("\nCurrent Probabilities:")
+        answers = sorted(market["answers"], key=lambda x: x["probability"], reverse=True)
+        for answer in answers:
+            probability = answer["probability"] * 100
+            print(f"- {answer['text']}: {probability:.2f}%")
+    elif market["outcomeType"] == "BINARY":  # Handle binary markets
+        probability = market["probability"] * 100
+        print(f"\nCurrent Probability (YES): {probability:.2f}%")
+
+    return market
 
 
 def get_user_by_username(username: str):
     """Get user information by their username."""
-    return _make_api_request("GET", f"/user/{username}")
+    user = _make_api_request("GET", f"/user/{username}")
+    username = user["username"]
+    name = user["name"]
+    bio = user["bio"]
+    balance = user["balance"]
+    profit_all_time = user["profitCached"]["allTime"]
+    follower_count = user["followerCountCached"]
+    url = user["url"]
+
+    print(f"Username: {username}")
+    print(f"Name: {name}")
+    if bio:
+        print(f"Bio: {bio}")
+    print(f"Balance: {balance}")
+    print(f"All-Time Profit: {profit_all_time}")
+    print(f"Follower Count: {follower_count}")
+    print(f"Profile URL: {url}")
+
+
+
 
 
 def place_bet(contract_id: str, amount: int, outcome: str, limit_prob=None, expires_at=None):
@@ -156,13 +209,10 @@ if __name__ == "__main__":
     try:
         if args.command == "search-market":
             markets = search_market(args.term, args.limit)
-            print(json.dumps(markets, indent=4))
         elif args.command == "get-market":
             market = get_market_by_slug(args.slug)
-            print(json.dumps(market, indent=4))
         elif args.command == "get-user":
             user = get_user_by_username(args.username)
-            print(json.dumps(user, indent=4)) 
         elif args.command == "bet":
             bet_result = place_bet(args.contract_id, args.amount, args.outcome, args.limit_prob, args.expires_at)
             print(json.dumps(bet_result, indent=4))
